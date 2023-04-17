@@ -1,3 +1,4 @@
 data/
 IPPy/
 model_weights/
+**/__pycache__/
