@@ -1,36 +1,43 @@
 # Import libraries
 import numpy as np
-import os
+import tensorflow as tf
 from tensorflow import keras as ks
 
-import time
+from skimage.metrics import structural_similarity as ssim
+
+from PIL import Image
+import os
 
 from IPPy.metrics import *
 from IPPy.utils import *
-from IPPy import operators
+from IPPy.nn import models as NN_models
 from IPPy import stabilizers
+from IPPy import operators
 from IPPy import reconstructors
 
 import argparse
 import yaml
 parser = argparse.ArgumentParser()
+parser.add_argument("-p", "--path",
+                    help="Path to the image you want to process. If an int is given, then the corresponding test image will be processed.",
+                    required=True)
 parser.add_argument("-m", "--model",
-                           help="Name of the model to process. Can be used for multiple models to compare them.",
-                           required=True,
-                           action='append',
-                           choices=["nn", "renn", "stnn", "strenn", "is"]
-                           )
+                    help="Name of the model to process. Can be used for multiple models to compare them.",
+                    required=True,
+                    action='append',
+                    choices=["nn", "renn", "stnn", "strenn", "is"]
+                    )
 parser.add_argument('-ni', '--noise_inj',
                     help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
                     type=float,
                     default=0,
                     required=False)
 parser.add_argument("-e", "--epsilon",
-                           help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
-                           type=float,
-                           required=False,
-                           default=0
-                           )
+                    help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
+                    type=float,
+                    required=False,
+                    default=0
+                    )
 parser.add_argument('--config',
                     help="The path for the .yml containing the configuration for the model.",
                     type=str,
@@ -52,7 +59,7 @@ with open(args.config, 'r') as file:
 DATA_PATH = './data/'
 TEST_PATH = os.path.join(DATA_PATH, 'GOPRO_test_small.npy')
 
-test_data = np.load(TEST_PATH)[10:51]
+test_data = np.load(TEST_PATH)
 N_test, m, n = test_data.shape
 print(f"Test data shape: {test_data.shape}")
 
@@ -67,38 +74,40 @@ suffix = str(noise_level).split('.')[-1]
 
 epsilon = args.epsilon
 
+
+## ----------------------------------------------------------------------------------------------
+## ---------- Model evaluation ------------------------------------------------------------------
+## ----------------------------------------------------------------------------------------------
+# Load the test image
+if args.path.isdigit():
+    idx = int(args.path)
+    x_gt = test_data[idx]
+else:
+    # Load the given image
+    x_gt = Image.open(args.path)[:, :, 0]
+    x_gt = np.array(x_gt.resize((256, 256)))
+
+# Corrupt it
+K = operators.ConvolutionOperator(kernel, (m, n))
+y_delta = K @ x_gt + (noise_level + epsilon) * np.random.normal(0, 1, m*n)
+y_delta = np.reshape(y_delta, (m, n))
+
+# Visualize
+save_output = True
+if save_output:
+    plt.imsave('./images/corr_image.png', y_delta, cmap='gray')
+    plt.imsave('./images/gt_image.png', x_gt, cmap='gray')
+
 # Utils
 use_convergence = False
-
-## ----------------------------------------------------------------------------------------------
-## ---------- Accuracy --------------------------------------------------------------------------
-## ----------------------------------------------------------------------------------------------
-# Create corrupted dataset
-K = operators.ConvolutionOperator(kernel, (m, n))
-corr_data = np.zeros_like(test_data)
-epsilon_corr_data = np.zeros_like(test_data)
-
-print("Generating Corrupted Data...")
-start_time = time.time()
-for i in range(len(test_data)):
-    y_delta = K @ test_data[i]
-    y_delta = np.reshape(y_delta, (m, n))
-    
-    corr_data[i] = y_delta
-
-    y_delta = K @ test_data[i] + (noise_level + epsilon) * np.random.normal(0, 1, m*n)
-    y_delta = np.reshape(y_delta, (m, n))
-    
-    epsilon_corr_data[i] = y_delta
-
-print(f"...Done! (in {time.time() - start_time:0.4f}s)")
 
 # Load model.
 # Model name -> Choose in {nn, stnn, renn, strenn}
 model_name_list = args.model
 
-accuracies = []
-stability_constants = []
+RE_list = []
+PSNR_list = []
+SSIM_list = []
 for model_name in model_name_list:
     # Setting up the model given the name
     match model_name:
@@ -121,6 +130,8 @@ for model_name in model_name_list:
             param_reg = setup[model_name]['reg_param']
             algorithm = stabilizers.Tik_CGLS_stabilizer(kernel, param_reg, k=setup[model_name]['n_iter'])
 
+    model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
+
     if use_convergence:
         Psi = reconstructors.VariationalReconstructor(algorithm)
     else:
@@ -130,50 +141,21 @@ for model_name in model_name_list:
         Psi = reconstructors.StabilizedReconstructor(model, phi)
 
     # Reconstruct
-    x_rec = Psi(corr_data)
-    x_rec_epsilon = Psi(epsilon_corr_data)
+    x_rec = Psi(y_delta)
 
-    if x_rec.shape[-1] == 1:
-        x_rec = x_rec[:, :, :, 0]
+    # Metrics
+    RE_list.append(rel_err(x_gt, x_rec))
+    SSIM_list.append(ssim(x_gt, x_rec))
+    PSNR_list.append(PSNR(x_gt, x_rec))
 
-    if x_rec_epsilon.shape[-1] == 1:
-        x_rec_epsilon = x_rec_epsilon[:, :, :, 0]
+    # Save reconstruction
+    if save_output:
+        plt.imsave(f"./images/recon_{model_name}_{suffix}_eps_{str(epsilon)}.png", x_rec, cmap='gray')
 
-    ## We estimate the error eta by computing the maximum of || Psi(Ax_gt) - x_gt ||_2 and then the accuracy as eta^{-1}.
-    err_vec = []
-    for i in range(len(test_data)):
-        err = x_rec[i] - test_data[i]
-        err_vec.append(np.linalg.norm(err.reshape((m, n)).flatten()))
-
-    idx_acc = np.argmax(np.array(err_vec))
-    acc = 1 / err_vec[idx_acc]
-
-    ## Given epsilon, we estimate C^epsilon_Psi by 
-    ##
-    ## C^epsilon = (max|| Psi(Ax_gt) - x_gt ||_2 - eta) / epsilon
-
-    stab_vec = []
-    for i in range(len(test_data)):
-        stab = x_rec_epsilon[i] - test_data[i]
-        stab_vec.append(np.linalg.norm(stab.reshape((m, n)).flatten()))
-
-    idx_stab = np.argmax(np.array(stab_vec))
-    stab = stab_vec[idx_stab]
-    C_epsilon = (stab - (1 / acc)) / (np.linalg.norm((epsilon_corr_data[idx_stab] - corr_data[idx_stab]).flatten()))
-    
-    print("")
-    print(f"Error of {model_name}: {1 / acc}")
-    print(f"Accuracy of {model_name}: {acc}")
-    print(f"{epsilon}-stability of {model_name}: {C_epsilon}")
-    print(f"|| Psi(Ax + e) - x || = {stab}")
-    print(f"Idx -> Acc: {idx_acc}, Stab: {idx_stab}")
-    print("")
-
-    accuracies.append(acc)
-    stability_constants.append(C_epsilon)
-
-# Visualize the results
+# Print out the metricss
 import tabulate
-accuracies.insert(0, 'Accuracy')
-stability_constants.insert(0, 'Stability')
-print(tabulate.tabulate([accuracies, stability_constants], headers=[f"\u03B5 = {epsilon}",] + args.model))
+errors = [["Corrupted", rel_err(x_gt, y_delta), PSNR(x_gt, y_delta), ssim(x_gt, y_delta)]]
+for i in range(len(model_name_list)):
+    errors.append([model_name_list[i].capitalize(), RE_list[i], PSNR_list[i], SSIM_list[i]])
+
+print(tabulate.tabulate(errors, headers=[f"\u03B5 = {epsilon}", 'Rel. Err.', 'PSNR', 'SSIM']))

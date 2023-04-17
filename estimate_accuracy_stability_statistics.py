@@ -11,6 +11,50 @@ from IPPy import operators
 from IPPy import stabilizers
 from IPPy import reconstructors
 
+import argparse
+import yaml
+parser = argparse.ArgumentParser()
+parser.add_argument("-m", "--model",
+                    help="Name of the model to process. Can be used for multiple models to compare them.",
+                    required=True,
+                    action='append',
+                    choices=["nn", "renn", "stnn", "strenn", "is"]
+                    )
+parser.add_argument('-ni', '--noise_inj',
+                    help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
+                    type=float,
+                    default=0,
+                    required=False)
+parser.add_argument("-e", "--epsilon",
+                    help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
+                    type=float,
+                    required=False,
+                    default=0
+                    )
+parser.add_argument('--n_tests',
+                    help="Number of times the computation will be performed. Default: 20.",
+                    type=int,
+                    required=False,
+                    default=20)
+parser.add_argument('--sample_per_test',
+                    help="Number of samples per test. Default: 50.",
+                    type=int,
+                    required=False,
+                    default=50)
+parser.add_argument('--config',
+                    help="The path for the .yml containing the configuration for the model.",
+                    type=str,
+                    required=False,
+                    default=None)
+args = parser.parse_args()
+
+if args.config is None:
+    suffix = str(args.noise_inj).split('.')[-1]
+    args.config = f"./config/GoPro_{suffix}.yml"
+
+with open(args.config, 'r') as file:
+    setup = yaml.safe_load(file)
+
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
@@ -23,24 +67,20 @@ test_data = np.load(TEST_PATH)
 N_test, m, n = test_data.shape
 
 # Define the setup for the forward problem
-k_size = 11
-sigma = 1.3
+k_size = setup['k']
+sigma = setup['sigma']
 kernel = get_gaussian_kernel(k_size, sigma)
 
 # Noise
-noise_level = 0.025 # in {0, 0.025}
-epsilon = 0.08 # if noise_level = 0 -> epsilon = 0.01
-               # if noise_level = 0.025 -> epsilon = 0.05 or 0.08
-               
+noise_level = args.noise_inj
+suffix = str(noise_level).split('.')[-1]
+
+epsilon = args.epsilon        
 epsilon_suffix = str(epsilon).split(".")[-1]
-if noise_level == 0:
-    suffix = '0'
-elif noise_level == 0.025:
-    suffix = '025'
 
 # Statistics
-N_population = 20
-N_per_test = 50 # Number of test sample per sample test
+N_population = args.n_tests
+N_per_test = args.sample_per_test # Number of test sample per sample test
 
 pop_accuracies = []
 pop_stability_constants = []
@@ -68,7 +108,6 @@ for n_test in range(N_population):
 
     print("Generating Corrupted Data...")
     start_time = time.time()
-    # np.random.seed(42)
     for i in range(len(test_data_sample)):
         y_delta = K @ test_data_sample[i] + noise_level * np.random.normal(0, 1, m*n)
         y_delta = np.reshape(y_delta, (m, n))
@@ -84,7 +123,7 @@ for n_test in range(N_population):
 
     # Load model.
     # Model name -> Choose in {nn, stnn, renn, strenn, is}
-    model_name_list = ('nn', 'stnn', 'renn', 'strenn')# , 'is')
+    model_name_list = args.model
 
     accuracies = []
     stability_constants = []
@@ -96,19 +135,19 @@ for n_test in range(N_population):
                 phi = stabilizers.PhiIdentity()
             case 'stnn':
                 weights_name = 'stnn_unet'
-                reg_param = 1e-2
-                phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=3)
+                reg_param = setup[model_name]['reg_param']
+                phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[model_name]['n_iter'])
             case 'renn':
                 weights_name = 'renn_unet'
                 phi = stabilizers.PhiIdentity()
             case 'strenn':
                 weights_name = 'strenn_unet'
-                reg_param = 1e-2
-                phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=3)
+                reg_param = setup[model_name]['reg_param']
+                phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[model_name]['n_iter'])
             case 'is':
                 use_convergence = True
-                param_reg = 1e-1 # 8e-2
-                algorithm = stabilizers.Tik_CGLS_stabilizer(kernel, param_reg, k=100)
+                param_reg = setup[model_name]['reg_param']
+                algorithm = stabilizers.Tik_CGLS_stabilizer(kernel, param_reg, k=setup[model_name]['n_iter'])
 
         if use_convergence:
             Psi = reconstructors.VariationalReconstructor(algorithm)

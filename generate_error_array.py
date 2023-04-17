@@ -5,7 +5,6 @@ from tensorflow import keras as ks
 
 import time
 
-##### TO DO: add ... to the import.
 from IPPy.metrics import *
 from IPPy.utils import *
 from IPPy import operators
@@ -14,6 +13,52 @@ from IPPy import reconstructors
 
 # Disable TensorFlow warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
+import argparse
+import yaml
+parser = argparse.ArgumentParser()
+parser.add_argument("-m", "--model",
+                    help="Name of the model to process. Can be used for multiple models to compare them.",
+                    required=True,
+                    action='append',
+                    choices=["nn", "renn", "stnn", "strenn", "is"]
+                    )
+parser.add_argument('-ni', '--noise_inj',
+                    help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
+                    type=float,
+                    default=0,
+                    required=False)
+parser.add_argument("-em", "--epsilon_min",
+                    help="Minimum noise level of additional corruption. Given as gaussian variance. Default: 0.01.",
+                    type=float,
+                    required=False,
+                    default=0.01
+                    )
+parser.add_argument("-eM", "--epsilon_max",
+                    help="Maximum noise level of additional corruption. Given as gaussian variance. Default: 0.1.",
+                    type=float,
+                    required=False,
+                    default=0.1
+                    )
+parser.add_argument("-en", "--epsilon_n",
+                    help="Number of noise level of additional corruption. Default: 10.",
+                    type=int,
+                    required=False,
+                    default=10
+                    )
+parser.add_argument('--config',
+                    help="The path for the .yml containing the configuration for the model.",
+                    type=str,
+                    required=False,
+                    default=None)
+args = parser.parse_args()
+
+if args.config is None:
+    suffix = str(args.noise_inj).split('.')[-1]
+    args.config = f"./config/GoPro_{suffix}.yml"
+
+with open(args.config, 'r') as file:
+    setup = yaml.safe_load(file)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
@@ -27,23 +72,19 @@ N_test, m, n = test_data.shape
 print(f"Test data shape: {test_data.shape}")
 
 # Define the setup for the forward problem
-k_size = 11
-sigma = 1.3
+k_size = setup['k']
+sigma = setup['sigma']
 kernel = get_gaussian_kernel(k_size, sigma)
 
 # Noise
-noise_level = 0.025
-
-if noise_level == 0:
-    suffix = '0'
-elif noise_level == 0.025:
-    suffix = '025'
+noise_level = args.noise_inj
+suffix = str(noise_level).split('.')[-1]
 
 # Utils
 use_convergence = False
-epsilon_min = 0.01
-epsilon_max = 0.1
-epsilon_n = 10
+epsilon_min = args.epsilon_min
+epsilon_max = args.epsilon_max
+epsilon_n = args.epsilon_n
 
 epsilon_vec = np.linspace(epsilon_min, epsilon_max, epsilon_n)
 
@@ -58,7 +99,7 @@ print("Generating Corrupted Data...")
 start_time = time.time()
 # np.random.seed(42)
 for i in range(len(test_data)):
-    y_delta = K @ test_data[i] # + noise_level * np.random.normal(0, 1, m*n)
+    y_delta = K @ test_data[i]
     y_delta = np.reshape(y_delta, (m, n))
     
     corr_data[i] = y_delta
@@ -67,7 +108,7 @@ print(f"...Done! (in {time.time() - start_time}s)")
 
 # Load model.
 # Model name -> Choose in {nn, stnn, renn, strenn, is}
-model_name_list = ('renn', 'strenn', 'is') #('nn', 'stnn', 'renn', 'strenn') # , 'is')
+model_name_list = args.model
 
 models_error = []
 for model_name in model_name_list:
@@ -78,24 +119,26 @@ for model_name in model_name_list:
             phi = stabilizers.PhiIdentity()
         case 'stnn':
             weights_name = 'stnn_unet'
-            reg_param = 1e-2
-            phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=3)
+            reg_param = setup[model_name]['reg_param']
+            phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[model_name]['n_iter'])
         case 'renn':
             weights_name = 'renn_unet'
             phi = stabilizers.PhiIdentity()
         case 'strenn':
             weights_name = 'strenn_unet'
-            reg_param = 1e-2
-            phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=3)
+            reg_param = setup[model_name]['reg_param']
+            phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[model_name]['n_iter'])
         case 'is':
             use_convergence = True
-            param_reg = 0.27 # 1e-1 # 0.31 # 8e-2
-            algorithm = stabilizers.Tik_CGLS_stabilizer(kernel, param_reg, k=100)
+            param_reg = setup[model_name]['reg_param']
+            algorithm = stabilizers.Tik_CGLS_stabilizer(kernel, param_reg, k=setup[model_name]['n_iter'])
+
+    model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
 
     if use_convergence:
         Psi = reconstructors.VariationalReconstructor(algorithm)
     else:
-        model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}_noise_data.h5", custom_objects={'SSIM': SSIM})
+        model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
 
         # Define reconstructor
         Psi = reconstructors.StabilizedReconstructor(model, phi)
