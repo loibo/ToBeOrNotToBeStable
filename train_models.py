@@ -17,7 +17,7 @@ import argparse
 import yaml
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-n', '--model_name',
+parser.add_argument('-m', '--model_name',
                     choices=["nn", "renn", "stnn", "strenn"],
                     help="Select the model you want to test.",
                     type=str,

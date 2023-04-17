@@ -30,8 +30,6 @@ Please note that the functions requires a specific folders and files structure t
 |   |- ...
 |- plots
 |   |- ...
-|- results
-|   |- ...
 |- statistics
 |   |- ...
 |- other_files.py
@@ -59,6 +57,48 @@ which will download the data, in `.npy` format, used in the experiments. It is a
 ## Pre-trained models
 
 The pre-trained models will be available soon.
+
+## Usage
+The most important files to take into considerations are:
+* `train_models.py`: used to train the models;
+* `estimate_accuracy_stability.py`: used to compute an approximation of the accuracy and the stability constant of each model;
+* `compute_metrics_single_image.py`: used to generate visual results of a given input image and the corresponding metrics, expressed as **Relative Error**, **PSNR** and **SSIM**.
+
+In the following, we will report the usage for each of those main files.
+
+### **train_models.py**
+As already mentioned, this is used to train the models if you don't want (or you don't have access to) the pre-trained model weights. There are 4 possible models you can train: `nn`, `renn`, `stnn` and `strenn`. Given a configuration file (in `.yml` format) with the same structure of the configuration files you can find in the `config/` folder and given a float number representing the amount of *noise injection* you want to use in your training, run:
+
+```
+python train_models.py -m MODEL -ni NOISE_INJECTION --config CONFIG_PATH
+```
+
+After the training is completed. The resulting weights will appear in the `model_weights` folder.
+
+### **estimate_accuracy_stability.py**
+Given the model in the list `nn`, `renn`, `stnn`, `strenn`, given the noise injection floating point number, the configuration file as above and a floating point number `epsilon` representing the additional corruption (it is summed with the noise injection), to obtain an estimation of the accuracy of the considered model and its stability constant, run:
+
+```
+python estimate_accuracy_stability.py -m MODEL1 -m MODEL2 -m MODEL3 -m MODEL4 -ni NOISE_INJECTION -e EPSILON --config CONFIG_PATH
+```
+
+Note that multiple models can be tested at the same time.
+
+### **compute_metrics_single_image.py**
+Given the same parameters described above, to compute the metrics (and generate the results) for an image in a fixed PATH, run:
+
+```
+python compute_metrics_single_image.py -p PATH -m MODEL1 -m MODEL2 -m MODEL3 -m MODEL4 -ni NOISE_INJECTION -e EPSILON --config CONFIG_PATH
+```
+
+## Results
+
+
+
+| $\hat{\delta}=0$             |  $\hat{\delta}=0.025$ |
+:-------------------------:|:-------------------------:
+<img src="./plots/error_over_delta_0.png"  width=100%> | <img src="./plots/error_over_delta_025.png"  width=68%>
+<img src="./plots/parallelogram_epsilon_01_noise_0.png"  width=100%> | <img src="./plots/parallelogram_delta_05_08_noise_025.png"  width=68%>
 
 ## BibTex citation
 Consider citing our work if you use it. Here the Bibtex for the citation.
