@@ -1,21 +1,17 @@
-# Change current directory to the correct directory
-import os
-# os.chdir('./StReNN')
-print(f"Current directory: {os.getcwd()}")
-
 # Import libraries
 import numpy as np
 
 import tensorflow as tf
 from tensorflow import keras as ks
 
-import IPPy.NN_models as NN_models
+import IPPy.nn.models as NN_models
 from IPPy.metrics import *
 from IPPy.utils import *
 from IPPy.operators import *
-from IPPy.NN_utils import *
-from IPPy.GCV_tik import *
+from IPPy.nn.datasets import *
 from IPPy import stabilizers
+
+import os
 
 
 ## ----------------------------------------------------------------------------------------------
@@ -50,7 +46,7 @@ print(f"Suffix: {suffix}")
 
 # Number of epochs
 n_epochs = 50
-"""
+
 ## ----------------------------------------------------------------------------------------------
 ## ---------- NN --------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
@@ -100,7 +96,7 @@ model.compile(optimizer=ks.optimizers.Adam(learning_rate=lr_schedule),
 model.fit(trainloader, epochs=n_epochs)
 model.save(f"./model_weights/renn_unet_{suffix}.h5")
 print(f"Training of ReNN model -> Finished.")
-"""
+
 ## ----------------------------------------------------------------------------------------------
 ## ---------- StNN ------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
