@@ -7,7 +7,6 @@ from IPPy.utils import *
 from IPPy import stabilizers
 from IPPy.metrics import *
 
-
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
@@ -28,7 +27,8 @@ k_size = 11
 sigma = 1.3
 kernel = get_gaussian_kernel(k_size, sigma)
 
-noise_level = 0
+noise_level = 0.025
+suffix = str(noise_level).split('.')[-1]
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Setup Problem  --------------------------------------------------------------------
@@ -63,4 +63,4 @@ for i in range(len(train_data)):
     convergence_train_data[i] = x_rec
 
 # Saving
-np.save('./data/GOPRO_convergence_small_nonoise.npy', convergence_train_data)
+np.save(f'./data/GOPRO_convergence_small_{suffix}.npy', convergence_train_data)

@@ -13,6 +13,9 @@ from IPPy import stabilizers
 
 import os
 
+import config.config as config
+args = config.args
+setup = config.setup
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
@@ -31,18 +34,15 @@ print(f"Training data shape: {train_data.shape}")
 print(f"Test data shape: {test_data.shape}")
 
 # Define the setup for the forward problem
-k_size = 11
-sigma = 1.3
+k_size = setup['k']
+sigma = setup['sigma']
 kernel = get_gaussian_kernel(k_size, sigma)
 
-noise_level = 0.025
+noise_level = args.noise_inj
+suffix = str(noise_level).split('.')[-1]
 
-if noise_level == 0:
-    suffix = '0'
-elif noise_level == 0.025:
-    suffix = '025'
-
-print(f"Suffix: {suffix}")
+if args.verbose == '1':
+    print(f"Suffix: {suffix}")
 
 # Number of epochs
 n_epochs = 50
@@ -50,103 +50,44 @@ n_epochs = 50
 ## ----------------------------------------------------------------------------------------------
 ## ---------- NN --------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-# Define dataloader
-trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8)
-
-# Build model and compile it
-model = NN_models.get_UNet(input_shape = (256, 256, 1), n_scales = 4, conv_per_scale = 2, final_relu=True, skip_connection=False)
-
-# Define the Optimizer
-initial_learning_rate = 5e-4
-lr_schedule = ks.optimizers.schedules.PolynomialDecay(
-    initial_learning_rate,
-    decay_steps=1e4,
-    end_learning_rate=1e-5)
-
-model.compile(optimizer=ks.optimizers.Adam(learning_rate=initial_learning_rate),
-              loss='mse',
-              metrics=[SSIM, 'mse'])
-
-# Train
-model.fit(trainloader, epochs=n_epochs)
-model.save(f"./model_weights/nn_unet_{suffix}.h5")
-print(f"Training of NN model -> Finished.")
+if args.model_name == 'nn':
+    # Define dataloader
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- ReNN ------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-# Define dataloader
-trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
-
-# Build model and compile it
-model = NN_models.get_UNet(input_shape = (256, 256, 1), n_scales = 4, conv_per_scale = 2, final_relu=True, skip_connection=False)
-
-# Define the Optimizer
-initial_learning_rate = 1e-3
-lr_schedule = ks.optimizers.schedules.PolynomialDecay(
-    initial_learning_rate,
-    decay_steps=1e4,
-    end_learning_rate=1e-5)
-
-model.compile(optimizer=ks.optimizers.Adam(learning_rate=lr_schedule),
-              loss='mse',
-              metrics=[SSIM, 'mse'])
-
-# Train
-model.fit(trainloader, epochs=n_epochs)
-model.save(f"./model_weights/renn_unet_{suffix}.h5")
-print(f"Training of ReNN model -> Finished.")
+if args.model_name == 'renn':
+    # Define dataloader
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- StNN ------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-# Define dataloader
-reg_param = 1e-2
-phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=3)
-trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, phi=phi)
-
-# Build model and compile it
-model = NN_models.get_UNet(input_shape = (256, 256, 1), n_scales = 4, conv_per_scale = 2, final_relu=True, skip_connection=False)
-
-# Define the Optimizer
-initial_learning_rate = 1e-3
-lr_schedule = ks.optimizers.schedules.PolynomialDecay(
-    initial_learning_rate,
-    decay_steps=1e4,
-    end_learning_rate=1e-5)
-
-model.compile(optimizer=ks.optimizers.Adam(learning_rate=lr_schedule),
-              loss='mse',
-              metrics=[SSIM, 'mse'])
-
-# Train
-model.fit(trainloader, epochs=n_epochs)
-model.save(f"./model_weights/stnn_unet_{suffix}.h5")
-print(f"Training of StNN model -> Finished.")
+if args.model_name == 'stnn':
+    # Define dataloader
+    reg_param = setup[args.model_name]['reg_param']
+    phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[args.model_name]['n_iter'])
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, phi=phi)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- StReNN ----------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-# Define dataloader
-reg_param = 1e-2
-phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=3)
-trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, phi=phi, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
+if args.model_name == 'strenn':
+    # Define dataloader
+    reg_param = setup[args.model_name]['reg_param']
+    phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[args.model_name]['n_iter'])
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, phi=phi, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
 
+# TRAIN
 # Build model and compile it
 model = NN_models.get_UNet(input_shape = (256, 256, 1), n_scales = 4, conv_per_scale = 2, final_relu=True, skip_connection=False)
 
 # Define the Optimizer
-initial_learning_rate = 1e-3
-lr_schedule = ks.optimizers.schedules.PolynomialDecay(
-    initial_learning_rate,
-    decay_steps=1e4,
-    end_learning_rate=1e-5)
-
-model.compile(optimizer=ks.optimizers.Adam(learning_rate=lr_schedule),
-              loss='mse',
-              metrics=[SSIM, 'mse'])
+model.compile(optimizer=ks.optimizers.Adam(learning_rate=setup['learning_rate']),
+            loss='mse',
+            metrics=[SSIM, 'mse'])
 
 # Train
-model.fit(trainloader, epochs=n_epochs)
-model.save(f"./model_weights/strenn_unet_{suffix}.h5")
-print(f"Training of StReNN model -> Finished.")
+model.fit(trainloader, epochs=setup['n_epochs'])
+model.save(f"./model_weights/{args.model_name}_unet_{suffix}.h5")
