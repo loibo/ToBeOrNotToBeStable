@@ -45,21 +45,22 @@ if args.verbose == '1':
     print(f"Suffix: {suffix}")
 
 # Number of epochs
-n_epochs = 50
+n_epochs = setup['n_epochs']
+batch_size = setup['batch_size']
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- NN --------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
 if args.model_name == 'nn':
     # Define dataloader
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8)
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- ReNN ------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
 if args.model_name == 'renn':
     # Define dataloader
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- StNN ------------------------------------------------------------------------------
@@ -68,7 +69,7 @@ if args.model_name == 'stnn':
     # Define dataloader
     reg_param = setup[args.model_name]['reg_param']
     phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[args.model_name]['n_iter'])
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, phi=phi)
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, phi=phi)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- StReNN ----------------------------------------------------------------------------
@@ -77,7 +78,7 @@ if args.model_name == 'strenn':
     # Define dataloader
     reg_param = setup[args.model_name]['reg_param']
     phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[args.model_name]['n_iter'])
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=8, phi=phi, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, phi=phi, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
 
 # TRAIN
 # Build model and compile it
