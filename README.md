@@ -15,6 +15,10 @@ Moreover, the `IPPy` library is required to execute portions of the code. `IPPy`
 git clone https://github.com/devangelista2/IPPy.git
 ```
 
+In case of future releases of `IPPy` library will raise errors, a static version of that library that works with this code can be downloaded from Google Drive at: https://drive.google.com/drive/folders/1rRiS-cly4XWRtIIUgwIWprmKFqREqLDZ?usp=sharing.
+
+**Note:** Python version >=3.10 is required to run the code.
+
 ## Project Stucture
 Please note that the functions requires a specific folders and files structure to work. Since, due to memory constraint, it was not possible to upload the whole project on GitHub, the user is asked to create some folders to follow the required structure. A diagram representing it is given in the following.
 
@@ -54,9 +58,11 @@ git clone https://huggingface.co/datasets/TivoGatto/celeba_grayscale
 
 which will download the data, in `.npy` format, used in the experiments. It is a slighly modified version of the GoPro dataset, where the images has been cropped to be $256 \times 256$ images, and converted to grey-scale with standard conversion algorithms. 
 
+Alternatively, all the data required to replicate the experiments can be downloaded from Google Drive at: https://drive.google.com/drive/folders/1pjzBn1MplKg-eQbtJIRXLTjN_Jg1psrn?usp=sharing.
+
 ## Pre-trained models
 
-The pre-trained models will be available soon.
+The pre-trained models can be downloaded from: https://drive.google.com/drive/folders/1YPzdFg-TUpbh1BJ6br0HnyEIlB9vsWEM?usp=sharing. We remark that it is required to download all the files from the link above and place them into the `model_weights` folder, as described above.
 
 ## Usage
 The most important files to take into considerations are:
