@@ -7,7 +7,7 @@ def change_median(bplot, colors):
         patch.set_color(color)
 
 # Read the data
-BASE_PATH = './statistics'
+BASE_PATH = './' #V'./statistics'
 
 noise_level = 0
 epsilon = 0.01
@@ -29,20 +29,20 @@ print(f"Shape of Acc: {acc.shape}")
 print(f"Shape of Stab: {stab.shape}")
 
 # Boxplot Acc
-plt.figure()
+plt.figure(figsize=[16,4])
 bplot_acc = plt.boxplot(acc[1:, :], vert=False)
 plt.grid()
 plt.xlabel(r'$\hat{\eta}^{-1}$')
 plt.yticks([1, 2, 3, 4, 5], ['NN', 'StNN', 'ReNN', 'StReNN', 'IS'])
 # plt.set_xtickslabels(["NN", "StNN", "ReNN", "StReNN"])
-plt.title(f"Accuracy in delta_hat = {suffix}, delta = {epsilon_suffix}")
+# plt.title(f"Accuracy in delta_hat = {suffix}, delta = {epsilon_suffix}")
 change_median(bplot_acc, colors)
 plt.savefig(f"{BASE_PATH}/box_acc_noise_{suffix}_epsilon_{epsilon_suffix}.png", dpi=600)
 
 # Boxplot Stab
-plt.figure()
+plt.figure(figsize=[16,4])
 bplot_stab = plt.boxplot(stab[1:, :], vert=False)
-plt.xscale('log')
+# plt.xscale('log')
 plt.grid()
 plt.xlabel(r'$\hat{C}^\epsilon_\Psi$')
 plt.yticks([1, 2, 3, 4, 5], ['NN', 'StNN', 'ReNN', 'StReNN', 'IS'])

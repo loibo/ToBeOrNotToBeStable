@@ -21,4 +21,4 @@ strenn:
 # IS
 is:
   reg_param: 0.31
-  k: 100
+  n_iter: 100

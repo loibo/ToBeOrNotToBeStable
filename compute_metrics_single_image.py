@@ -27,10 +27,14 @@ parser.add_argument("-m", "--model",
                     action='append',
                     choices=["nn", "renn", "stnn", "strenn", "is"]
                     )
-parser.add_argument('-ni', '--noise_inj',
-                    help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
+stabilization = parser.add_mutually_exclusive_group(required=True)
+stabilization.add_argument('-ni', '--noise_inj',
+                    help="The amount of noise injection. Given as the variance of the Gaussian.",
                     type=float,
-                    default=0,
+                    required=False)
+stabilization.add_argument('-nl', '--noise_level',
+                    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
+                    type=float,
                     required=False)
 parser.add_argument("-e", "--epsilon",
                     help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
@@ -46,7 +50,8 @@ parser.add_argument('--config',
 args = parser.parse_args()
 
 if args.config is None:
-    suffix = str(args.noise_inj).split('.')[-1]
+    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
+    suffix = str(noise_level).split('.')[-1]
     args.config = f"./config/GoPro_{suffix}.yml"
 
 with open(args.config, 'r') as file:
@@ -57,7 +62,7 @@ with open(args.config, 'r') as file:
 ## ----------------------------------------------------------------------------------------------
 # Load data
 DATA_PATH = './data/'
-TEST_PATH = os.path.join(DATA_PATH, 'GOPRO_test_small.npy')
+TEST_PATH = os.path.join(DATA_PATH, 'GOPRO_train_small.npy')
 
 test_data = np.load(TEST_PATH)
 N_test, m, n = test_data.shape
@@ -69,7 +74,7 @@ sigma = setup['sigma']
 kernel = get_gaussian_kernel(k_size, sigma)
 
 # Noise
-noise_level = args.noise_inj
+noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split('.')[-1]
 
 epsilon = args.epsilon
@@ -108,8 +113,11 @@ model_name_list = args.model
 RE_list = []
 PSNR_list = []
 SSIM_list = []
+
+
 for model_name in model_name_list:
     # Setting up the model given the name
+    
     match model_name:
         case 'nn': 
             weights_name = 'nn_unet'
@@ -129,13 +137,15 @@ for model_name in model_name_list:
             use_convergence = True
             param_reg = setup[model_name]['reg_param']
             algorithm = stabilizers.Tik_CGLS_stabilizer(kernel, param_reg, k=setup[model_name]['n_iter'])
-
-    model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
-
+    
+    print(use_convergence)
     if use_convergence:
         Psi = reconstructors.VariationalReconstructor(algorithm)
     else:
-        model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
+        if args.noise_level is not None:
+            model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
+        elif args.noise_inj is not None:
+            model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}_NI.h5", custom_objects={'SSIM': SSIM})
 
         # Define reconstructor
         Psi = reconstructors.StabilizedReconstructor(model, phi)
@@ -145,7 +155,7 @@ for model_name in model_name_list:
 
     # Metrics
     RE_list.append(rel_err(x_gt, x_rec))
-    SSIM_list.append(ssim(x_gt, x_rec))
+    SSIM_list.append(ssim(x_gt, x_rec,data_range=1))
     PSNR_list.append(PSNR(x_gt, x_rec))
 
     # Save reconstruction
@@ -154,7 +164,7 @@ for model_name in model_name_list:
 
 # Print out the metricss
 import tabulate
-errors = [["Corrupted", rel_err(x_gt, y_delta), PSNR(x_gt, y_delta), ssim(x_gt, y_delta)]]
+errors = [["Corrupted", rel_err(x_gt, y_delta), PSNR(x_gt, y_delta), ssim(x_gt, y_delta,data_range=1)]]
 for i in range(len(model_name_list)):
     errors.append([model_name_list[i].capitalize(), RE_list[i], PSNR_list[i], SSIM_list[i]])
 
