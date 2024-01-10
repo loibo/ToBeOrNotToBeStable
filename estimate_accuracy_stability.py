@@ -20,10 +20,14 @@ parser.add_argument("-m", "--model",
                            action='append',
                            choices=["nn", "renn", "stnn", "strenn", "is"]
                            )
-parser.add_argument('-ni', '--noise_inj',
-                    help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
+stabilization = parser.add_mutually_exclusive_group(required=True)
+stabilization.add_argument('-ni', '--noise_inj',
+                    help="The amount of noise injection. Given as the variance of the Gaussian.",
                     type=float,
-                    default=0,
+                    required=False)
+stabilization.add_argument('-nl', '--noise_level',
+                    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
+                    type=float,
                     required=False)
 parser.add_argument("-e", "--epsilon",
                            help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
@@ -39,7 +43,8 @@ parser.add_argument('--config',
 args = parser.parse_args()
 
 if args.config is None:
-    suffix = str(args.noise_inj).split('.')[-1]
+    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
+    suffix = str(noise_level).split('.')[-1]
     args.config = f"./config/GoPro_{suffix}.yml"
 
 with open(args.config, 'r') as file:
@@ -52,7 +57,7 @@ with open(args.config, 'r') as file:
 DATA_PATH = './data/'
 TEST_PATH = os.path.join(DATA_PATH, 'GOPRO_test_small.npy')
 
-test_data = np.load(TEST_PATH)[10:51]
+test_data = np.load(TEST_PATH)
 N_test, m, n = test_data.shape
 print(f"Test data shape: {test_data.shape}")
 
@@ -62,13 +67,16 @@ sigma = setup['sigma']
 kernel = get_gaussian_kernel(k_size, sigma)
 
 # Noise
-noise_level = args.noise_inj
+noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split('.')[-1]
 
 epsilon = args.epsilon
 
 # Utils
 use_convergence = False
+
+# Set a seed
+np.random.seed(seed=42)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Accuracy --------------------------------------------------------------------------
@@ -124,7 +132,10 @@ for model_name in model_name_list:
     if use_convergence:
         Psi = reconstructors.VariationalReconstructor(algorithm)
     else:
-        model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
+        if args.noise_level is not None:
+            model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={'SSIM': SSIM})
+        elif args.noise_inj is not None:
+            model = ks.models.load_model(f"./model_weights/{weights_name}_{suffix}_NI.h5", custom_objects={'SSIM': SSIM})
 
         # Define reconstructor
         Psi = reconstructors.StabilizedReconstructor(model, phi)
@@ -140,24 +151,15 @@ for model_name in model_name_list:
         x_rec_epsilon = x_rec_epsilon[:, :, :, 0]
 
     ## We estimate the error eta by computing the maximum of || Psi(Ax_gt) - x_gt ||_2 and then the accuracy as eta^{-1}.
-    err_vec = []
-    for i in range(len(test_data)):
-        err = x_rec[i] - test_data[i]
-        err_vec.append(np.linalg.norm(err.reshape((m, n)).flatten()))
-
-    idx_acc = np.argmax(np.array(err_vec))
+    err_vec = np.linalg.norm((x_rec - test_data).reshape(x_rec.shape[0], -1), axis=-1)
+    idx_acc = np.argmax(err_vec)
     acc = 1 / err_vec[idx_acc]
 
     ## Given epsilon, we estimate C^epsilon_Psi by 
     ##
     ## C^epsilon = (max|| Psi(Ax_gt) - x_gt ||_2 - eta) / epsilon
-
-    stab_vec = []
-    for i in range(len(test_data)):
-        stab = x_rec_epsilon[i] - test_data[i]
-        stab_vec.append(np.linalg.norm(stab.reshape((m, n)).flatten()))
-
-    idx_stab = np.argmax(np.array(stab_vec))
+    stab_vec = np.linalg.norm((x_rec_epsilon - test_data).reshape(x_rec.shape[0], -1), axis=-1)
+    idx_stab = np.argmax(stab_vec)
     stab = stab_vec[idx_stab]
     C_epsilon = (stab - (1 / acc)) / (np.linalg.norm((epsilon_corr_data[idx_stab] - corr_data[idx_stab]).flatten()))
     

@@ -22,10 +22,19 @@ parser.add_argument('-m', '--model_name',
                     help="Select the model you want to test.",
                     type=str,
                     required=True)
-parser.add_argument('-ni', '--noise_inj',
-                    help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
+stabilization = parser.add_mutually_exclusive_group(required=True)
+stabilization.add_argument('-ni', '--noise_inj',
+                    help="The amount of noise injection. Given as the variance of the Gaussian.",
                     type=float,
-                    default=0,
+                    required=False)
+stabilization.add_argument('-nl', '--noise_level',
+                    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
+                    type=float,
+                    required=False)
+parser.add_argument('-nt', '--noise_type',
+                    help="Type of noise added to the input at training phace. Default: gaussian.",
+                    type=str,
+                    default='gaussian',
                     required=False)
 parser.add_argument('--config',
                     help="The path for the .yml containing the configuration for the model.",
@@ -41,7 +50,8 @@ parser.add_argument('--verbose',
 args = parser.parse_args()
 
 if args.config is None:
-    suffix = str(args.noise_inj).split('.')[-1]
+    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
+    suffix = str(noise_level).split('.')[-1]
     args.config = f"./config/GoPro_{suffix}.yml"
 
 with open(args.config, 'r') as file:
@@ -68,7 +78,7 @@ k_size = setup['k']
 sigma = setup['sigma']
 kernel = get_gaussian_kernel(k_size, sigma)
 
-noise_level = args.noise_inj
+noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split('.')[-1]
 
 if args.verbose == '1':
@@ -83,14 +93,14 @@ batch_size = setup['batch_size']
 ## ----------------------------------------------------------------------------------------------
 if args.model_name == 'nn':
     # Define dataloader
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size)
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, noise_type=args.noise_type)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- ReNN ------------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
 if args.model_name == 'renn':
     # Define dataloader
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_{suffix}.npy"), noise_type=args.noise_type)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- StNN ------------------------------------------------------------------------------
@@ -99,7 +109,7 @@ if args.model_name == 'stnn':
     # Define dataloader
     reg_param = setup[args.model_name]['reg_param']
     phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[args.model_name]['n_iter'])
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, phi=phi)
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, phi=phi, noise_type=args.noise_type)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- StReNN ----------------------------------------------------------------------------
@@ -108,7 +118,7 @@ if args.model_name == 'strenn':
     # Define dataloader
     reg_param = setup[args.model_name]['reg_param']
     phi = stabilizers.Tik_CGLS_stabilizer(kernel, reg_param, k=setup[args.model_name]['n_iter'])
-    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, phi=phi, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_0.npy"))
+    trainloader = Data2D(TRAIN_PATH, kernel, noise_level=noise_level, batch_size=batch_size, phi=phi, convergence_path=os.path.join(DATA_PATH, f"GOPRO_convergence_small_{suffix}.npy"), noise_type=args.noise_type)
 
 # TRAIN
 # Build model and compile it

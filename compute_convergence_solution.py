@@ -7,6 +7,8 @@ from IPPy.utils import *
 from IPPy import stabilizers
 from IPPy.metrics import *
 
+from skimage.metrics import structural_similarity as ssim
+
 # Parse input
 import argparse
 import yaml
@@ -14,20 +16,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--test', 
                     action='store_true',
                     help="If used, process the test set. The  training set is processed otherwise.")
-parser.add_argument('--noise_level',
+parser.add_argument('-nl', '--noise_level',
                     help="The noise level injected into the y datum, given as gaussian variance. Default: 0.",
                     type=float,
                     default=0,
-                    required=False)
-parser.add_argument('--param_reg',
-                    help="The regularization parameter for the inverse problem. Default: 1e-2.",
-                    type=float,
-                    default=1e-2,
-                    required=False)
-parser.add_argument('--n_iter',
-                    help="The maximum number of iterations for the reconstruction algorithm. Default: 100",
-                    default=100,
-                    type=int,
                     required=False)
 parser.add_argument('--config',
                     help="The path for the .yml containing the configuration for the model.",
@@ -70,22 +62,21 @@ suffix = str(noise_level).split('.')[-1]
 ## ---------- Setup Problem  --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
 K = operators.ConvolutionOperator(kernel, (m, n))
-param_reg = args.param_reg
-Psi_k = stabilizers.Tik_CGLS_stabilizer(kernel, param_reg, k=args.n_iter)
+Psi_k = stabilizers.Tik_CGLS_stabilizer(kernel, setup['is']['reg_param'], k=setup['is']['n_iter'])
 
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Compute solutions -----------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-
 if not args.test:
     # Train data
     import time
     start_time = time.time()
+    tot_ssim = 0
     convergence_train_data = np.zeros_like(train_data)
     for i in range(len(train_data)):
-        if i % 100 == 0:
-            print(f"Done {i+1} image(s). Time passed: {time.time() - start_time:0.4f}s")
+        if (i+1) % 100 == 0:
+            print(f"Done {i+1} image(s). Time passed: {time.time() - start_time:0.4f}s. Avg. SSIM: {tot_ssim/(i+1)}.")
 
         # Load ground truth
         x_gt = train_data[i]
@@ -98,6 +89,9 @@ if not args.test:
 
         # Append the result
         convergence_train_data[i] = x_rec
+
+        # Compute the SSIM
+        tot_ssim = tot_ssim + ssim(x_gt, x_rec, data_range=1)
 
     # Saving
     np.save(f'./data/GOPRO_convergence_small_{suffix}.npy', convergence_train_data)
