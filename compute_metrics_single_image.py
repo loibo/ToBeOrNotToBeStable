@@ -13,6 +13,12 @@ from IPPy import operators, reconstructors, stabilizers
 from IPPy.metrics import *
 from IPPy.nn import models as NN_models
 from IPPy.utils import *
+from miscellaneous import utilities
+
+#### TODO:
+# - Gestire parsing
+# - Semplificare il match model
+# - Introdurre file .py con gli esperimenti A e B.
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -72,6 +78,8 @@ with open(args.config, "r") as file:
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
+utilities.initialization()
+
 # Load data
 DATA_PATH = "./data/"
 TEST_PATH = os.path.join(DATA_PATH, "GOPRO_train_small.npy")
@@ -91,6 +99,8 @@ suffix = str(noise_level).split(".")[-1]
 
 epsilon = args.epsilon
 
+# Set a seed
+np.random.seed(seed=42)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Model evaluation ------------------------------------------------------------------
@@ -156,7 +166,6 @@ for model_name in model_name_list:
                 kernel, param_reg, k=setup[model_name]["n_iter"]
             )
 
-    print(use_convergence)
     if use_convergence:
         Psi = reconstructors.VariationalReconstructor(algorithm)
     else:

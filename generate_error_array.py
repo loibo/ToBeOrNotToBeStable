@@ -1,20 +1,16 @@
 # Import libraries
+import argparse
 import os
 import time
 
 import numpy as np
+import yaml
 from tensorflow import keras as ks
 
 from IPPy import operators, reconstructors, stabilizers
 from IPPy.metrics import *
 from IPPy.utils import *
-
-# Disable TensorFlow warnings
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-import argparse
-
-import yaml
+from miscellaneous import utilities
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -25,12 +21,19 @@ parser.add_argument(
     action="append",
     choices=["nn", "renn", "stnn", "strenn", "is"],
 )
-parser.add_argument(
+stabilization = parser.add_mutually_exclusive_group(required=True)
+stabilization.add_argument(
     "-ni",
     "--noise_inj",
-    help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
+    help="The amount of noise injection. Given as the variance of the Gaussian.",
     type=float,
-    default=0,
+    required=False,
+)
+stabilization.add_argument(
+    "-nl",
+    "--noise_level",
+    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
+    type=float,
     required=False,
 )
 parser.add_argument(
@@ -67,7 +70,8 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.config is None:
-    suffix = str(args.noise_inj).split(".")[-1]
+    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
+    suffix = str(noise_level).split(".")[-1]
     args.config = f"./config/GoPro_{suffix}.yml"
 
 with open(args.config, "r") as file:
@@ -76,11 +80,13 @@ with open(args.config, "r") as file:
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
+utilities.initialization()
+
 # Load data
 DATA_PATH = "./data/"
 TEST_PATH = os.path.join(DATA_PATH, "GOPRO_test_small.npy")
 
-test_data = np.load(TEST_PATH)[10:51]
+test_data = np.load(TEST_PATH)
 N_test, m, n = test_data.shape
 print(f"Test data shape: {test_data.shape}")
 
@@ -90,7 +96,7 @@ sigma = setup["sigma"]
 kernel = get_gaussian_kernel(k_size, sigma)
 
 # Noise
-noise_level = args.noise_inj
+noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split(".")[-1]
 
 # Utils
@@ -101,6 +107,9 @@ epsilon_n = args.epsilon_n
 
 epsilon_vec = np.linspace(epsilon_min, epsilon_max, epsilon_n)
 
+# Set a seed
+np.random.seed(seed=42)
+
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Accuracy --------------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
@@ -110,7 +119,6 @@ corr_data = np.zeros_like(test_data)
 
 print("Generating Corrupted Data...")
 start_time = time.time()
-# np.random.seed(42)
 for i in range(len(test_data)):
     y_delta = K @ test_data[i]
     y_delta = np.reshape(y_delta, (m, n))
@@ -123,9 +131,9 @@ print(f"...Done! (in {time.time() - start_time}s)")
 # Model name -> Choose in {nn, stnn, renn, strenn, is}
 model_name_list = args.model
 
-models_error = []
 for model_name in model_name_list:
     # Setting up the model given the name
+
     match model_name:
         case "nn":
             weights_name = "nn_unet"
@@ -152,50 +160,35 @@ for model_name in model_name_list:
                 kernel, param_reg, k=setup[model_name]["n_iter"]
             )
 
-    model = ks.models.load_model(
-        f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={"SSIM": SSIM}
-    )
-
     if use_convergence:
         Psi = reconstructors.VariationalReconstructor(algorithm)
     else:
-        model = ks.models.load_model(
-            f"./model_weights/{weights_name}_{suffix}.h5", custom_objects={"SSIM": SSIM}
-        )
+        if args.noise_level is not None:
+            model = ks.models.load_model(
+                f"./model_weights/{weights_name}_{suffix}.h5",
+                custom_objects={"SSIM": SSIM},
+            )
+        elif args.noise_inj is not None:
+            model = ks.models.load_model(
+                f"./model_weights/{weights_name}_{suffix}_NI.h5",
+                custom_objects={"SSIM": SSIM},
+            )
 
         # Define reconstructor
         Psi = reconstructors.StabilizedReconstructor(model, phi)
 
-    # Reconstruct
-    x_rec = Psi(corr_data)
+    print("")
+    error_vec = np.zeros((test_data.shape[0], epsilon_n, 2))
+    for i, epsilon in enumerate(epsilon_vec):
+        # Verbose
+        print(
+            f"Computing error vector for Psi = {model_name}, epsilon = {epsilon:0.3f}."
+        )
 
-    if x_rec.shape[-1] == 1:
-        x_rec = x_rec[:, :, :, 0]
-
-    ## We estimate the error eta by computing the maximum of || Psi(Ax_gt) - x_gt ||_2 and then the accuracy as eta^{-1}.
-    err_vec = []
-    for i in range(len(test_data)):
-        err = x_rec[i] - test_data[i]
-        err_vec.append(np.linalg.norm(err.reshape((m, n)).flatten()))
-
-    idx_acc = np.argmax(np.array(err_vec))
-    acc = 1 / err_vec[idx_acc]
-
-    error_norm_vec = []
-    for epsilon in epsilon_vec:
         # Create vector for data
-        epsilon_corr_data = np.zeros_like(test_data)
-
-        print(f"Generating Corrupted Data for epsilon = {epsilon}...")
-        start_time = time.time()
-        # np.random.seed(42)
-        for i in range(len(test_data)):
-            y_delta = K @ test_data[i] + epsilon * np.random.normal(0, 1, m * n)
-            y_delta = np.reshape(y_delta, (m, n))
-
-            epsilon_corr_data[i] = y_delta
-
-        print(f"...Done! (in {time.time() - start_time}s)")
+        epsilon_corr_data = corr_data + epsilon * np.random.normal(
+            0, 1, corr_data.shape
+        )
 
         # Reconstruct
         x_rec_epsilon = Psi(epsilon_corr_data)
@@ -207,30 +200,19 @@ for model_name in model_name_list:
         ##
         ## C^epsilon = (max|| Psi(Ax_gt + e) - x_gt ||_2 - eta) / epsilon
 
-        stab_vec = []
-        for i in range(len(test_data)):
-            stab = x_rec_epsilon[i] - test_data[i]
-            stab_vec.append(np.linalg.norm(stab.reshape((m, n)).flatten()))
+        stab_vec = np.linalg.norm(
+            (x_rec_epsilon - test_data).reshape(x_rec_epsilon.shape[0], -1), axis=-1
+        )
+        noise_vec = np.linalg.norm(
+            (epsilon_corr_data - corr_data).reshape(epsilon_corr_data.shape[0], -1),
+            axis=-1,
+        )
 
-        idx_stab = np.argmax(np.array(stab_vec))
-        stab = stab_vec[idx_stab]
-        error_norm_vec.append(stab)
+        error_vec[:, i, 0] = stab_vec
+        error_vec[:, i, 1] = noise_vec
 
-        print("")
-        print(f"Accuracy of {model_name}: {acc}")
-        print(f"For epsilon={epsilon}, || Psi(Ax + e) - x || = {stab}")
-        print(f"Idx -> Acc: {idx_acc}, Stab: {idx_stab}")
-        print("")
-
-    # Save the results
-    error_norm_vec = [1 / acc] + error_norm_vec
-    error_norm_vec = np.array(error_norm_vec)
-    print(error_norm_vec)
-
-    models_error.append(error_norm_vec)
-
-models_error = np.array(models_error)
-np.save(
-    "./plots/perturbed_error_different_epsilon_" + suffix + "_noise_data.npy",
-    models_error,
-)
+    np.save(
+        f"./plots/{model_name}_unet_{suffix}_error_{epsilon_min}_to_{epsilon_max}.npy",
+        error_vec,
+    )
+    print(error_vec.shape)

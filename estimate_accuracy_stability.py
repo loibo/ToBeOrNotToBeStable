@@ -10,6 +10,7 @@ from tensorflow import keras as ks
 from IPPy import operators, reconstructors, stabilizers
 from IPPy.metrics import *
 from IPPy.utils import *
+from miscellaneous import utilities
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -63,6 +64,8 @@ with open(args.config, "r") as file:
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
+utilities.initialization()
+
 # Load data
 DATA_PATH = "./data/"
 TEST_PATH = os.path.join(DATA_PATH, "GOPRO_test_small.npy")
@@ -181,7 +184,7 @@ for model_name in model_name_list:
     ##
     ## C^epsilon = (max|| Psi(Ax_gt) - x_gt ||_2 - eta) / epsilon
     stab_vec = np.linalg.norm(
-        (x_rec_epsilon - test_data).reshape(x_rec.shape[0], -1), axis=-1
+        (x_rec_epsilon - test_data).reshape(x_rec_epsilon.shape[0], -1), axis=-1
     )
     idx_stab = np.argmax(stab_vec)
     stab = stab_vec[idx_stab]
