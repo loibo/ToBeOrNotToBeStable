@@ -10,6 +10,7 @@ from tensorflow import keras as ks
 from IPPy import operators, reconstructors, stabilizers
 from IPPy.metrics import *
 from IPPy.utils import *
+from miscellaneous import utilities
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -20,12 +21,19 @@ parser.add_argument(
     action="append",
     choices=["nn", "renn", "stnn", "strenn", "is"],
 )
-parser.add_argument(
+stabilization = parser.add_mutually_exclusive_group(required=True)
+stabilization.add_argument(
     "-ni",
     "--noise_inj",
-    help="The amount of noise injection. Given as the variance of the Gaussian. Default: 0.",
+    help="The amount of noise injection. Given as the variance of the Gaussian.",
     type=float,
-    default=0,
+    required=False,
+)
+stabilization.add_argument(
+    "-nl",
+    "--noise_level",
+    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
+    type=float,
     required=False,
 )
 parser.add_argument(
@@ -60,7 +68,8 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.config is None:
-    suffix = str(args.noise_inj).split(".")[-1]
+    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
+    suffix = str(noise_level).split(".")[-1]
     args.config = f"./config/GoPro_{suffix}.yml"
 
 with open(args.config, "r") as file:
@@ -69,6 +78,8 @@ with open(args.config, "r") as file:
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
+utilities.initialization()
+
 # Load data
 DATA_PATH = "./data/"
 TEST_PATH = os.path.join(DATA_PATH, "GOPRO_test_small.npy")
@@ -83,11 +94,13 @@ sigma = setup["sigma"]
 kernel = get_gaussian_kernel(k_size, sigma)
 
 # Noise
-noise_level = args.noise_inj
+noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split(".")[-1]
 
 epsilon = args.epsilon
-epsilon_suffix = str(epsilon).split(".")[-1]
+
+# Set a seed
+np.random.seed(seed=42)
 
 # Statistics
 N_population = args.n_tests
@@ -100,9 +113,6 @@ pop_stability_constants = []
 for n_test in range(N_population):
     print("")
     print(f"Sample test: {n_test+1}")
-
-    # Utils
-    use_convergence = False
 
     # Sample from Test Set
     idx_sample = np.random.choice(np.arange(N_test), size=(N_per_test,))
@@ -142,42 +152,7 @@ for n_test in range(N_population):
     stability_constants = []
     for model_name in model_name_list:
         # Setting up the model given the name
-        match model_name:
-            case "nn":
-                weights_name = "nn_unet"
-                phi = stabilizers.PhiIdentity()
-            case "stnn":
-                weights_name = "stnn_unet"
-                reg_param = setup[model_name]["reg_param"]
-                phi = stabilizers.Tik_CGLS_stabilizer(
-                    kernel, reg_param, k=setup[model_name]["n_iter"]
-                )
-            case "renn":
-                weights_name = "renn_unet"
-                phi = stabilizers.PhiIdentity()
-            case "strenn":
-                weights_name = "strenn_unet"
-                reg_param = setup[model_name]["reg_param"]
-                phi = stabilizers.Tik_CGLS_stabilizer(
-                    kernel, reg_param, k=setup[model_name]["n_iter"]
-                )
-            case "is":
-                use_convergence = True
-                param_reg = setup[model_name]["reg_param"]
-                algorithm = stabilizers.Tik_CGLS_stabilizer(
-                    kernel, param_reg, k=setup[model_name]["n_iter"]
-                )
-
-        if use_convergence:
-            Psi = reconstructors.VariationalReconstructor(algorithm)
-        else:
-            model = ks.models.load_model(
-                f"./model_weights/{weights_name}_{suffix}.h5",
-                custom_objects={"SSIM": SSIM},
-            )
-
-            # Define reconstructor
-            Psi = reconstructors.StabilizedReconstructor(model, phi)
+        Psi = utilities.get_reconstructor(model_name, kernel, args, setup)
 
         # Reconstruct
         x_rec = Psi(corr_data)
@@ -190,24 +165,20 @@ for n_test in range(N_population):
             x_rec_epsilon = x_rec_epsilon[:, :, :, 0]
 
         ## We estimate the error eta by computing the maximum of || Psi(Ax_gt) - x_gt ||_2 and then the accuracy as eta^{-1}.
-        err_vec = []
-        for i in range(len(test_data_sample)):
-            err = x_rec[i] - test_data_sample[i]
-            err_vec.append(np.linalg.norm(err.reshape((m, n)).flatten()))
-
-        idx_acc = np.argmax(np.array(err_vec))
+        err_vec = np.linalg.norm(
+            (x_rec - test_data_sample).reshape(x_rec.shape[0], -1), axis=-1
+        )
+        idx_acc = np.argmax(err_vec)
         acc = 1 / err_vec[idx_acc]
 
         ## Given epsilon, we estimate C^epsilon_Psi by
         ##
         ## C^epsilon = (max|| Psi(Ax_gt) - x_gt ||_2 - eta) / epsilon
-
-        stab_vec = []
-        for i in range(len(test_data_sample)):
-            stab = x_rec_epsilon[i] - test_data_sample[i]
-            stab_vec.append(np.linalg.norm(stab.reshape((m, n)).flatten()))
-
-        idx_stab = np.argmax(np.array(stab_vec))
+        stab_vec = np.linalg.norm(
+            (x_rec_epsilon - test_data_sample).reshape(x_rec_epsilon.shape[0], -1),
+            axis=-1,
+        )
+        idx_stab = np.argmax(stab_vec)
         stab = stab_vec[idx_stab]
         C_epsilon = (stab - (1 / acc)) / (
             np.linalg.norm(
@@ -235,10 +206,10 @@ pop_accuracies = np.array(pop_accuracies)
 pop_stability_constants = np.array(pop_stability_constants)
 
 np.save(
-    f"./statistics/accuracies_noise_{suffix}_epsilon_{epsilon_suffix}.npy",
+    f"./plots/accuracies_noise_{suffix}_epsilon_{epsilon}.npy",
     pop_accuracies,
 )
 np.save(
-    f"./statistics/stabilities_noise_{suffix}_epsilon_{epsilon_suffix}.npy",
+    f"./plots/stabilities_noise_{suffix}_epsilon_{epsilon}.npy",
     pop_stability_constants,
 )

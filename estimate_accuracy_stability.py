@@ -12,59 +12,11 @@ from IPPy.metrics import *
 from IPPy.utils import *
 from miscellaneous import utilities
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-m",
-    "--model",
-    help="Name of the model to process. Can be used for multiple models to compare them.",
-    required=True,
-    action="append",
-    choices=["nn", "renn", "stnn", "strenn", "is"],
-)
-stabilization = parser.add_mutually_exclusive_group(required=True)
-stabilization.add_argument(
-    "-ni",
-    "--noise_inj",
-    help="The amount of noise injection. Given as the variance of the Gaussian.",
-    type=float,
-    required=False,
-)
-stabilization.add_argument(
-    "-nl",
-    "--noise_level",
-    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
-    type=float,
-    required=False,
-)
-parser.add_argument(
-    "-e",
-    "--epsilon",
-    help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
-    type=float,
-    required=False,
-    default=0,
-)
-parser.add_argument(
-    "--config",
-    help="The path for the .yml containing the configuration for the model.",
-    type=str,
-    required=False,
-    default=None,
-)
-args = parser.parse_args()
-
-if args.config is None:
-    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
-    suffix = str(noise_level).split(".")[-1]
-    args.config = f"./config/GoPro_{suffix}.yml"
-
-with open(args.config, "r") as file:
-    setup = yaml.safe_load(file)
-
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
 utilities.initialization()
+args, setup = utilities.parse_arguments()
 
 # Load data
 DATA_PATH = "./data/"
@@ -84,9 +36,6 @@ noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split(".")[-1]
 
 epsilon = args.epsilon
-
-# Utils
-use_convergence = False
 
 # Set a seed
 np.random.seed(seed=42)
@@ -122,48 +71,7 @@ accuracies = []
 stability_constants = []
 for model_name in model_name_list:
     # Setting up the model given the name
-    match model_name:
-        case "nn":
-            weights_name = "nn_unet"
-            phi = stabilizers.PhiIdentity()
-        case "stnn":
-            weights_name = "stnn_unet"
-            reg_param = setup[model_name]["reg_param"]
-            phi = stabilizers.Tik_CGLS_stabilizer(
-                kernel, reg_param, k=setup[model_name]["n_iter"]
-            )
-        case "renn":
-            weights_name = "renn_unet"
-            phi = stabilizers.PhiIdentity()
-        case "strenn":
-            weights_name = "strenn_unet"
-            reg_param = setup[model_name]["reg_param"]
-            phi = stabilizers.Tik_CGLS_stabilizer(
-                kernel, reg_param, k=setup[model_name]["n_iter"]
-            )
-        case "is":
-            use_convergence = True
-            param_reg = setup[model_name]["reg_param"]
-            algorithm = stabilizers.Tik_CGLS_stabilizer(
-                kernel, param_reg, k=setup[model_name]["n_iter"]
-            )
-
-    if use_convergence:
-        Psi = reconstructors.VariationalReconstructor(algorithm)
-    else:
-        if args.noise_level is not None:
-            model = ks.models.load_model(
-                f"./model_weights/{weights_name}_{suffix}.h5",
-                custom_objects={"SSIM": SSIM},
-            )
-        elif args.noise_inj is not None:
-            model = ks.models.load_model(
-                f"./model_weights/{weights_name}_{suffix}_NI.h5",
-                custom_objects={"SSIM": SSIM},
-            )
-
-        # Define reconstructor
-        Psi = reconstructors.StabilizedReconstructor(model, phi)
+    Psi = utilities.get_reconstructor(model_name, kernel, args, setup)
 
     # Reconstruct
     x_rec = Psi(corr_data)

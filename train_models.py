@@ -15,67 +15,11 @@ from IPPy.operators import *
 from IPPy.utils import *
 from miscellaneous import utilities
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-m",
-    "--model",
-    help="Name of the model to process. Can be used for multiple models.",
-    required=True,
-    action="append",
-    choices=["nn", "renn", "stnn", "strenn", "is"],
-)
-stabilization = parser.add_mutually_exclusive_group(required=True)
-stabilization.add_argument(
-    "-ni",
-    "--noise_inj",
-    help="The amount of noise injection. Given as the variance of the Gaussian.",
-    type=float,
-    required=False,
-)
-stabilization.add_argument(
-    "-nl",
-    "--noise_level",
-    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
-    type=float,
-    required=False,
-)
-parser.add_argument(
-    "-nt",
-    "--noise_type",
-    help="Type of noise added to the input at training phace. Default: gaussian.",
-    type=str,
-    default="gaussian",
-    required=False,
-)
-parser.add_argument(
-    "--config",
-    help="The path for the .yml containing the configuration for the model.",
-    type=str,
-    required=False,
-    default=None,
-)
-parser.add_argument(
-    "--verbose",
-    help="Unable/Disable verbose for the code.",
-    type=str,
-    required=False,
-    default="1",
-    choices=["0", "1"],
-)
-args = parser.parse_args()
-
-if args.config is None:
-    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
-    suffix = str(noise_level).split(".")[-1]
-    args.config = f"./config/GoPro_{suffix}.yml"
-
-with open(args.config, "r") as file:
-    setup = yaml.safe_load(file)
-
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
 utilities.initialization()
+args, setup = utilities.parse_arguments()
 
 # Load data
 DATA_PATH = "./data/"
@@ -96,9 +40,6 @@ kernel = get_gaussian_kernel(k_size, sigma)
 
 noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split(".")[-1]
-
-if args.verbose == "1":
-    print(f"Suffix: {suffix}")
 
 # Number of epochs
 n_epochs = setup["n_epochs"]
