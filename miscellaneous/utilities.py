@@ -131,4 +131,4 @@ def get_reconstructor(model_name, kernel, args, setup):
 
         # Define reconstructor
         Psi = reconstructors.StabilizedReconstructor(model, phi)
-        return Psi
+    return Psi
