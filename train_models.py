@@ -15,11 +15,13 @@ from IPPy.operators import *
 from IPPy.utils import *
 from miscellaneous import utilities
 
+parser = utilities.default_parsing()
+args, setup = utilities.parse_arguments(parser)
+
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-utilities.initialization()
-args, setup = utilities.parse_arguments()
+utilities.initialization(seed=42)
 
 # Load data
 DATA_PATH = "./data/"

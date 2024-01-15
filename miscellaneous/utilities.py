@@ -10,12 +10,14 @@ from IPPy import operators, reconstructors, stabilizers
 from IPPy.metrics import *
 
 
-def initialization():
+def initialization(seed=42):
     # Disable TensorFlow warnings
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+    # Set a seed
+    np.random.seed(seed=seed)
 
-def parse_arguments():
+def default_parsing():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-m",
@@ -49,14 +51,6 @@ def parse_arguments():
         required=False,
     )
     parser.add_argument(
-        "-e",
-        "--epsilon",
-        help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
-        type=float,
-        required=False,
-        default=0,
-    )
-    parser.add_argument(
         "-p",
         "--path",
         help="Path to the image you want to process. If an int is given, then the corresponding test image will be processed.",
@@ -69,6 +63,9 @@ def parse_arguments():
         required=False,
         default=None,
     )
+    return parser
+
+def parse_arguments(parser):
     args = parser.parse_args()
 
     if args.config is None:

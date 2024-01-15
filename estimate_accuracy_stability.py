@@ -12,11 +12,13 @@ from IPPy.metrics import *
 from IPPy.utils import *
 from miscellaneous import utilities
 
+parser = utilities.default_parsing()
+args, setup = utilities.parse_arguments(parser)
+
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-utilities.initialization()
-args, setup = utilities.parse_arguments()
+utilities.initialization(seed=42)
 
 # Load data
 DATA_PATH = "./data/"
@@ -36,9 +38,6 @@ noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split(".")[-1]
 
 epsilon = args.epsilon
-
-# Set a seed
-np.random.seed(seed=42)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Accuracy --------------------------------------------------------------------------

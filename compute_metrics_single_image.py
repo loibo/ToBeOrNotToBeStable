@@ -16,15 +16,21 @@ from IPPy.utils import *
 from miscellaneous import utilities
 
 #### TODO:
-# - Gestire parsing
-# - Semplificare il match model
 # - Introdurre file .py con gli esperimenti A e B.
+
+parser = utilities.default_parsing()
+parser.add_argument(
+    "-p",
+    "--path",
+    help="Path to the image you want to process. If an int is given, then the corresponding test image will be processed.",
+    required=True,
+)
+args, setup = utilities.parse_arguments(parser)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-utilities.initialization()
-args, setup = utilities.parse_arguments()
+utilities.initialization(seed=42)
 
 # Load data
 DATA_PATH = "./data/"
@@ -44,9 +50,6 @@ noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split(".")[-1]
 
 epsilon = args.epsilon
-
-# Set a seed
-np.random.seed(seed=42)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Model evaluation ------------------------------------------------------------------

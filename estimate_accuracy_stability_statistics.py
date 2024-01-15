@@ -12,38 +12,7 @@ from IPPy.metrics import *
 from IPPy.utils import *
 from miscellaneous import utilities
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-m",
-    "--model",
-    help="Name of the model to process. Can be used for multiple models to compare them.",
-    required=True,
-    action="append",
-    choices=["nn", "renn", "stnn", "strenn", "is"],
-)
-stabilization = parser.add_mutually_exclusive_group(required=True)
-stabilization.add_argument(
-    "-ni",
-    "--noise_inj",
-    help="The amount of noise injection. Given as the variance of the Gaussian.",
-    type=float,
-    required=False,
-)
-stabilization.add_argument(
-    "-nl",
-    "--noise_level",
-    help="The amount of noise level added to the input datum. Given as the variance of the Gaussian.",
-    type=float,
-    required=False,
-)
-parser.add_argument(
-    "-e",
-    "--epsilon",
-    help="Noise level of additional corruption. Given as gaussian variance. Default: 0.",
-    type=float,
-    required=False,
-    default=0,
-)
+parser = utilities.default_parsing()
 parser.add_argument(
     "--n_tests",
     help="Number of times the computation will be performed. Default: 20.",
@@ -58,27 +27,12 @@ parser.add_argument(
     required=False,
     default=50,
 )
-parser.add_argument(
-    "--config",
-    help="The path for the .yml containing the configuration for the model.",
-    type=str,
-    required=False,
-    default=None,
-)
-args = parser.parse_args()
-
-if args.config is None:
-    noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
-    suffix = str(noise_level).split(".")[-1]
-    args.config = f"./config/GoPro_{suffix}.yml"
-
-with open(args.config, "r") as file:
-    setup = yaml.safe_load(file)
+args, setup = utilities.parse_arguments(parser)
 
 ## ----------------------------------------------------------------------------------------------
 ## ---------- Initialization --------------------------------------------------------------------
 ## ----------------------------------------------------------------------------------------------
-utilities.initialization()
+utilities.initialization(seed=42)
 
 # Load data
 DATA_PATH = "./data/"
@@ -98,9 +52,6 @@ noise_level = args.noise_inj if args.noise_inj is not None else args.noise_level
 suffix = str(noise_level).split(".")[-1]
 
 epsilon = args.epsilon
-
-# Set a seed
-np.random.seed(seed=42)
 
 # Statistics
 N_population = args.n_tests
